@@ -118,7 +118,8 @@ async function pollStatus() {
     $("#engineText").textContent = !s.alive ? "AI หยุดทำงาน — ดู logs/" : s.ready ? `พร้อม · ${net}${s.llm ? " · " + s.llm : ""}` : "กำลังวอร์มอัพ AI (ครั้งแรก ~30 วิ)…";
     S.llm = s.llm;
     Object.assign(S, { isLocal: s.local, full: s.full, serverOnline: s.online, lanUrl: s.lanUrl, publicUrl: s.publicUrl, frontendUrl: s.frontendUrl });
-    $("#btnServer").classList.toggle("hidden", !API_BASE || SERVER_SOURCE === "published");
+    $("#btnServer").classList.toggle("hidden", !!s.local);
+    $("#btnServer").textContent = s.full ? "🔑 เชื่อมต่อแล้ว" : SERVER_SOURCE === "published" ? "🔑 รหัสเข้าถึง" : "⚙️ เซิร์ฟเวอร์";
     if (S.online) renderRoomBar();
     if ($("#dlgNew").open) syncDialog();
     $("#assistSub").textContent = `KataGo ${net} (ตัวเดียวกับคู่แข่ง)${s.llm ? " + " + s.llm : ""}`;
@@ -1063,6 +1064,12 @@ $("#cmpThink").addEventListener("mouseout", (e) => { if (e.target.closest(".mv")
 
 const GB = (mb) => mb / 1024;
 function renderMachine() {
+  if (S.full === false) {
+    $("#macTiles").innerHTML = `<p class="note">🔒 ข้อมูล CPU/RAM/GPU เป็นของเครื่อง Mac ที่รันเกม — ดูได้บนเครื่องนั้น
+      หรือใส่ <b>รหัสเข้าถึง</b> ที่ปุ่ม 🔑 มุมขวาบน (รหัสที่ขึ้นตอนรัน play-online.sh)</p>`;
+    for (const id of ["#chCpu", "#chRam", "#chGpu"]) $(id).innerHTML = "";
+    return;
+  }
   const m = S.metrics, sys = S.sys;
   if (!m.length || !sys) { $("#macTiles").innerHTML = `<p class="note">กำลังเก็บข้อมูล…</p>`; return; }
   const cur = m[m.length - 1], t = now();
@@ -1100,10 +1107,8 @@ function renderMachine() {
 }
 
 async function pollMetrics() {
-  if (S.isLocal === false) {
-    $("#macTiles").innerHTML = `<p class="note">ข้อมูลเครื่องดูได้เฉพาะบนเครื่องที่เปิดเซิร์ฟเวอร์</p>`;
-    return;
-  }
+  if (S.full === undefined) { setTimeout(pollMetrics, 1000); return; }    // wait for /api/status
+  if (S.full === false) { if (S.tab === "machine") renderMachine(); return; }
   if (!document.hidden) {
     try {
       const since = S.metrics.length ? S.metrics[S.metrics.length - 1].t : 0;
