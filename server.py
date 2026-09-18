@@ -559,7 +559,8 @@ def main():
             print(f"   🌍 ลิงก์สาธารณะ: {PUBLIC_URL}/")
         if ALLOWED_ORIGINS:
             print(f"   🔓 อนุญาตหน้าเว็บจาก: {', '.join(sorted(ALLOWED_ORIGINS))}")
-        print("   🔑 รหัสเข้าถึงเต็มรูปแบบ: " + ("ตั้งไว้แล้ว (GO_ACCESS_KEY)" if ACCESS_KEY else "ไม่ได้ตั้ง — คนนอกเล่นได้เฉพาะห้องออนไลน์"))
+        print("   🔑 รหัสเข้าถึงเต็มรูปแบบ: " + (f"{ACCESS_KEY}   (ใส่ที่ปุ่ม 🔑 บนหน้าเว็บ · ให้เฉพาะคนที่ไว้ใจ)" if ACCESS_KEY
+                                                  else "ไม่ได้ตั้ง — คนนอกเล่นได้เฉพาะห้องออนไลน์"))
     else:
         print("   (เปิดให้คนอื่นเข้าห้องได้ด้วย: ./start.command --online)")
     print("   (warming up the engine ~30 s on first start — Ctrl+C to quit)")

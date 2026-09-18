@@ -55,7 +55,7 @@ if [[ -z "$URL" ]]; then echo "เปิด tunnel ไม่สำเร็จ:"
 KEY="${GO_ACCESS_KEY:-$(openssl rand -hex 8)}"
 if [[ "$PUBLISH" == "1" ]]; then
   SHARE="$FRONTEND   (เปิดแล้วเล่นได้เลย — ไม่ต้องกรอกอะไร)"
-  ( publish "$URL" && echo "\n  ✅ $FRONTEND ชี้มาที่ Mac เครื่องนี้แล้ว\n" \
+  ( publish "$URL" && echo "\n  ✅ $FRONTEND ชี้มาที่ Mac เครื่องนี้แล้ว — เปิดแล้วเล่นได้เลย\n  🔑 รหัสเข้าถึง: $KEY\n" \
       || echo "\n  ⚠️ อัปเดตหน้าเว็บไม่สำเร็จ (ดู $DEPLOY_LOG) — ใช้ลิงก์ $FRONTEND/?server=$URL แทน\n" ) &
 else
   SHARE="$FRONTEND/?server=$URL"

@@ -76,7 +76,7 @@ async function isGameServer(base) {
 }
 const serverReady = (async () => {
   const param = new URL(location.href).searchParams.get("server");
-  if (param && /^https?:\/\//.test(param)) {
+  if (param && /^https?:\/\//.test(param) && await isGameServer(param.replace(/\/+$/, ""))) {
     API_BASE = param.replace(/\/+$/, ""); SERVER_SOURCE = "param"; store("go.server", API_BASE); return;
   }
   if (await isGameServer("")) return;                 // this page is served by the Mac itself
@@ -1255,6 +1255,13 @@ function inviteLink(code) {
 }
 function openServerDialog(msg) {
   $("#srvUrl").value = API_BASE; $("#srvKey").value = ACCESS_KEY;
+  // when the page found the server by itself, only the access key is needed
+  const auto = SERVER_SOURCE === "published";
+  $("#srvUrl").closest("label").classList.toggle("hidden", auto);
+  $("#dlgServer h2").textContent = auto ? "ใส่รหัสเข้าถึง" : "เชื่อมต่อเซิร์ฟเวอร์เกม";
+  $("#dlgServer .note").innerHTML = auto
+    ? "เซิร์ฟเวอร์เชื่อมต่ออัตโนมัติแล้ว — ใส่รหัสเข้าถึงที่ขึ้นใน Terminal ตอนรัน <b>./scripts/play-online.sh</b> เพื่อเล่นกับ AI, P2P, AI vs AI และดูข้อมูลเครื่อง"
+    : "หน้าเว็บนี้ไม่มี AI ในตัว — KataGo รันบนเครื่อง Mac ของเจ้าของเกม ใส่ลิงก์เซิร์ฟเวอร์ที่ได้จาก <b>./scripts/play-online.sh</b> (ปกติถ้าเปิดจากลิงก์เชิญจะตั้งให้อัตโนมัติ)";
   $("#srvMsg").textContent = msg || (location.protocol === "https:" ? "ต้องเป็นลิงก์ https:// (เบราว์เซอร์บล็อก http จากหน้าเว็บ https)" : "");
   if ($("#dlgNew").open) $("#dlgNew").close();
   $("#dlgServer").showModal();
@@ -1266,7 +1273,8 @@ $("#dlgServer").addEventListener("close", () => {
   if (v !== "ok") return;
   const url = $("#srvUrl").value.trim().replace(/\/+$/, "");
   if (url && !/^https?:\/\/[^\s/]+/.test(url)) return openServerDialog("ลิงก์ไม่ถูกต้อง");
-  store("go.server", url); store("go.key", $("#srvKey").value.trim());
+  if (SERVER_SOURCE !== "published") store("go.server", url);
+  store("go.key", $("#srvKey").value.trim());
   const u = new URL(location.href); u.searchParams.delete("server"); history.replaceState(null, "", u);
   location.reload();
 });
