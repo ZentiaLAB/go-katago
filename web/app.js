@@ -62,17 +62,36 @@ function helpAllowed() {
 }
 
 // ------------------------------------------------------------------ API
-// The page can be served by the Mac itself (same origin) or from Vercel, in which case it talks to the Mac
-// through a tunnel URL given as ?server=… (invite links carry it) or entered in the ⚙️ dialog.
+// Where is the game server? In order: ?server=… in the URL, the Mac serving this page itself,
+// /server.json published by scripts/play-online.sh on each run, or an address saved from the ⚙️ dialog.
 function stored(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } }
 function store(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch { /* storage unavailable */ } }
-{
-  const s = new URL(location.href).searchParams.get("server");
-  if (s && /^https?:\/\//.test(s)) store("go.server", s.replace(/\/+$/, ""));
-}
-const API_BASE = stored("go.server");
 const ACCESS_KEY = stored("go.key");
+let API_BASE = "", SERVER_SOURCE = "same";          // "param" | "same" | "published" | "saved" | "none"
+async function isGameServer(base) {
+  try {
+    const r = await fetch(base + "/api/status", { cache: "no-store" });
+    return (r.headers.get("Content-Type") || "").includes("application/json");
+  } catch { return false; }
+}
+const serverReady = (async () => {
+  const param = new URL(location.href).searchParams.get("server");
+  if (param && /^https?:\/\//.test(param)) {
+    API_BASE = param.replace(/\/+$/, ""); SERVER_SOURCE = "param"; store("go.server", API_BASE); return;
+  }
+  if (await isGameServer("")) return;                 // this page is served by the Mac itself
+  try {
+    const r = await fetch("/server.json", { cache: "no-store" });
+    if (r.ok) {
+      S.published = await r.json();
+      if (S.published.server) { API_BASE = S.published.server.replace(/\/+$/, ""); SERVER_SOURCE = "published"; return; }
+    }
+  } catch { /* not published */ }
+  API_BASE = stored("go.server");
+  SERVER_SOURCE = API_BASE ? "saved" : "none";
+})();
 async function api(path, body) {
+  await serverReady;
   const headers = { "Content-Type": "application/json" };
   if (ACCESS_KEY) headers["X-Go-Key"] = ACCESS_KEY;
   const r = await fetch(API_BASE + path, { method: body ? "POST" : "GET", headers, body: body ? JSON.stringify(body) : undefined });
@@ -99,17 +118,24 @@ async function pollStatus() {
     $("#engineText").textContent = !s.alive ? "AI หยุดทำงาน — ดู logs/" : s.ready ? `พร้อม · ${net}${s.llm ? " · " + s.llm : ""}` : "กำลังวอร์มอัพ AI (ครั้งแรก ~30 วิ)…";
     S.llm = s.llm;
     Object.assign(S, { isLocal: s.local, full: s.full, serverOnline: s.online, lanUrl: s.lanUrl, publicUrl: s.publicUrl, frontendUrl: s.frontendUrl });
-    $("#btnServer").classList.toggle("hidden", !API_BASE);
+    $("#btnServer").classList.toggle("hidden", !API_BASE || SERVER_SOURCE === "published");
     if (S.online) renderRoomBar();
     if ($("#dlgNew").open) syncDialog();
     $("#assistSub").textContent = `KataGo ${net} (ตัวเดียวกับคู่แข่ง)${s.llm ? " + " + s.llm : ""}`;
     if (!s.ready && s.alive) setTimeout(pollStatus, 1500);
   } catch {
-    $("#engineText").textContent = API_BASE ? "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ (Mac ปิดอยู่หรือ tunnel หมดอายุ?)" : "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้";
+    const offline = S.published && !S.published.server;
+    $("#engineText").textContent = offline ? "🔴 เซิร์ฟเวอร์ของเจ้าของเกมปิดอยู่ตอนนี้"
+      : SERVER_SOURCE === "published" ? "กำลังเชื่อมต่อ Mac ของเจ้าของเกม… (ถ้านานเกิน 1 นาที แปลว่าเซิร์ฟเวอร์ปิดอยู่)"
+      : API_BASE ? "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ (Mac ปิดอยู่หรือ tunnel หมดอายุ?)" : "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้";
     $("#engine").classList.add("err");
     $("#btnServer").classList.remove("hidden");
-    if (!S.serverAsked && !["localhost", "127.0.0.1"].includes(location.hostname)) { S.serverAsked = true; openServerDialog(); }
-    setTimeout(pollStatus, 3000);
+    // only ask for an address when nothing tells us where the server is
+    if (!S.serverAsked && SERVER_SOURCE !== "published" && !offline && !["localhost", "127.0.0.1"].includes(location.hostname)) {
+      S.serverAsked = true; openServerDialog();
+    }
+    if (offline && $("#dlgNew").open) $("#dlgNew").close();
+    setTimeout(pollStatus, offline ? 15000 : 3000);
   }
 }
 
@@ -1214,6 +1240,7 @@ async function roomMove(gtp, k) {
 }
 function shareBase() { return S.publicUrl || S.lanUrl || location.origin; }
 function inviteLink(code) {
+  if (SERVER_SOURCE === "published") return `${location.origin}/?room=${code}`;   // the page already knows the server
   const server = API_BASE || (S.frontendUrl && S.publicUrl);
   if (!server) return `${shareBase()}/?room=${code}`;
   const u = new URL(API_BASE ? location.origin + location.pathname : S.frontendUrl);

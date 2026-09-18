@@ -7,3 +7,5 @@ __pycache__/
 .claude/
 .vercel
 .env*
+# written by scripts/play-online.sh (current tunnel address), deployed to Vercel only
+web/server.json
