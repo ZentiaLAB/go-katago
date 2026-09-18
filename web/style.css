@@ -203,7 +203,7 @@ details.note summary { cursor: pointer; }
 .pc-swap .note { margin-left: auto; }
 
 /* ---------- mode picker ---------- */
-.modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 @media (max-width: 520px) { .modes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .modes button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 6px; border-radius: 14px; text-align: center; }
 .modes button span { font-size: 24px; line-height: 1.1; }
@@ -248,3 +248,32 @@ details.note summary { cursor: pointer; }
 
 .mini-btn { padding: 4px 10px; font-size: 12.5px; border-radius: 99px; }
 .modes button:disabled small::after { content: " · ต้องมีรหัสเข้าถึง"; }
+
+/* ---------- tutorial ---------- */
+body.learning .card.eval { display: none; }
+.muted { color: var(--muted); font-size: 12.5px; }
+.lesson-progress { height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.lesson-progress div { height: 100%; background: var(--good); transition: width .3s; }
+.lesson-title { margin: 0; font-size: 19px; }
+.lesson-text { font-size: 14.5px; line-height: 1.7; }
+.lesson-fb { border-radius: 10px; padding: 10px 12px; font-size: 14px; border: 1px solid var(--line); background: var(--bg); }
+.lesson-fb.ok { border-color: var(--good); border-left: 4px solid var(--good); }
+.lesson-fb.bad { border-color: var(--danger); border-left: 4px solid var(--danger); }
+.lesson-fb.info { border-left: 4px solid var(--accent); }
+.lesson-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.lesson-btns button { font-size: 13px; padding: 6px 12px; }
+.lesson-index summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
+.lesson-index h5 { margin: 10px 0 4px; font-size: 12.5px; color: var(--muted); }
+.lesson-index button { display: block; width: 100%; text-align: left; border: none; background: none; padding: 4px 8px; border-radius: 8px; font-size: 13.5px; }
+.lesson-index button:hover { background: var(--bg); }
+.lesson-index button.cur { background: var(--bg); font-weight: 600; }
+.learn-status { font-size: 14px; }
+.learn-status b { font-size: 16px; }
+/* ---------- challenge ladder ---------- */
+.ladder { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px; max-height: 190px; overflow-y: auto; }
+.ladder li { font-size: 12.5px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+.ladder li.done { color: var(--ink); }
+.ladder li.done::before { content: "✅ "; }
+.ladder li.cur { border-color: var(--accent); color: var(--ink); font-weight: 600; box-shadow: 0 0 0 1px var(--accent); }
+.ladder li.cur::before { content: "▶ "; color: var(--accent); }
+.ladder li.locked::before { content: "🔒 "; }

@@ -1,6 +1,7 @@
 import { Board, BLACK, WHITE, EMPTY, other, colorChar, charColor, toGTP, fromGTP, starPoints, handicapPoints } from "./go.js";
 import * as X from "./explain.js";
 import { lineChart, barChart } from "./charts.js";
+import { LESSONS, CHAPTERS, LADDER } from "./lessons.js";
 
 const $ = (s) => document.querySelector(s);
 const cv = $("#board"), ctx = cv.getContext("2d");
@@ -142,12 +143,16 @@ async function pollStatus() {
 
 // ------------------------------------------------------------------ game flow
 function newGame(opts) {
-  Object.assign(S, opts);
+  // per-game extras reset unless given: lesson setup, tutorial / challenge state, board marks
+  Object.assign(S, { tutorial: null, challenge: null, setup: null, setupFirst: null, marks: null, hintMarks: null }, opts);
   S.gen++;
   api("/api/cancel", { channel: "ai" }); api("/api/cancel", { channel: "assist" });
   const b = new Board(S.size);
   S.initialStones = [];
-  if (S.handicap >= 2) {
+  if (S.setup) {
+    for (const [c, g] of S.setup) { const p = fromGTP(g, S.size); b.grid[b.idx(p.x, p.y)] = charColor(c); S.initialStones.push([charColor(c), g]); }
+    S.first = S.setupFirst || BLACK;
+  } else if (S.handicap >= 2) {
     for (const [x, y] of handicapPoints(S.size, S.handicap)) { b.grid[b.idx(x, y)] = BLACK; S.initialStones.push([BLACK, toGTP(x, y, S.size)]); }
     S.first = WHITE;
   } else S.first = BLACK;
@@ -161,7 +166,13 @@ function newGame(opts) {
   const who = (c) => `${stoneEmoji(c)} ${isRemote(c) ? playerName(c) : `P${pNum(c)} ${isAI(c) ? `AI ${levelName(c)}${pl(c).level === "super" ? ` (${pl(c).visits} visits)` : ""}` : `${solo() ? "คุณ" : "คน"} · ผู้ช่วย${assistName(assistFor(c))}`}`}`;
   const modeLine = { hva: "คน vs AI", hvh: "คน vs คน (ผลัดกันเดินบนเครื่องนี้)", ava: "AI vs AI (ดูอย่างเดียว)",
     online: `ออนไลน์ · ห้อง ${S.online?.code}${humans().length ? "" : " (ผู้ชม)"}` }[mode()];
-  post({ cls: "hint", title: `เริ่มเกมใหม่ · ${modeLine}`, lines: [
+  if (S.challenge) {
+    const st = LADDER[S.challenge.stage];
+    post({ cls: "hint", title: `🏆 ท้าชิงด่าน ${S.challenge.stage + 1}/${LADDER.length}: ${st.icon} ${st.name}`, lines: [
+      `กระดาน ${S.size}×${S.size} · คุณเล่นดำ · โคมิ ${S.komi} · ผู้ช่วยปิด · ย้อนท่าไม่ได้`,
+      "ชนะแล้วจะได้ท้าชิงด่านถัดไปที่ AI เก่งขึ้น — สู้ๆ! 💪",
+    ] });
+  } else if (!S.tutorial) post({ cls: "hint", title: `เริ่มเกมใหม่ · ${modeLine}`, lines: [
     `กระดาน ${S.size}×${S.size} · โคมิ ${S.komi}${S.handicap ? ` · ต่อ ${S.handicap} เม็ด` : ""}`,
     `${who(BLACK)} vs ${who(WHITE)}`,
     mode() === "ava" ? "กด ⏸ เพื่อหยุดดูตำแหน่ง · แท็บ 📈 เทียบ AI จะเทียบความคิดของ AI ทั้งสองฝั่ง"
@@ -244,6 +255,7 @@ function play(color, gtp) {
 }
 
 function humanPlay(gtp) {
+  if (S.tutorial) return tutorialPlay(gtp);
   if (S.over || S.thinking || !isHuman(toPlay())) return;
   const k = n(), color = toPlay();
   if (gtp !== "pass") {
@@ -382,7 +394,7 @@ async function endGame(opts = {}) {
     const winner = other(opts.resign);
     S.result = `${colorChar(winner)}+R`;
     updateUI();
-    return showResult(winTitle(winner), `${X.colorName(opts.resign)} (${playerName(opts.resign)}) ยอมแพ้${isAI(opts.resign) ? " — AI เห็นว่าไม่มีทางพลิกเกมแล้ว" : ""}`);
+    return showResult(winTitle(winner), `${X.colorName(opts.resign)} (${playerName(opts.resign)}) ยอมแพ้${isAI(opts.resign) ? " — AI เห็นว่าไม่มีทางพลิกเกมแล้ว" : ""}${challengeNote(winner)}`);
   }
   updateUI();
   flash("กำลังนับแต้ม…");
@@ -397,7 +409,7 @@ async function endGame(opts = {}) {
   const t = X.territory(res.ownership, S.size);
   draw(); updateUI();
   showResult(winTitle(winner),
-    `${X.colorName(winner)}ชนะ ${margin} แต้ม (กติกาจีน, โคมิ ${S.komi})\nพื้นที่+หมากโดยประมาณ: ดำ ${t.b} · ขาว ${t.w}\nจุดบนกระดานแสดงเจ้าของพื้นที่ · หมากที่มีกากบาทคือหมากตาย`);
+    `${X.colorName(winner)}ชนะ ${margin} แต้ม (กติกาจีน, โคมิ ${S.komi})\nพื้นที่+หมากโดยประมาณ: ดำ ${t.b} · ขาว ${t.w}\nจุดบนกระดานแสดงเจ้าของพื้นที่ · หมากที่มีกากบาทคือหมากตาย${challengeNote(winner)}`);
 }
 function winTitle(w) {
   if (mode() === "online") return isHuman(w) ? "🎉 คุณชนะ!" : `${stoneEmoji(w)} ${playerName(w)} ชนะ`;
@@ -573,6 +585,9 @@ $("#feed").addEventListener("mouseout", (e) => { if (e.target.closest(".mv")) { 
 // ------------------------------------------------------------------ UI
 function updateUI() {
   const t = toPlay();
+  document.body.classList.toggle("learning", !!S.tutorial);
+  document.querySelector('.tabs [data-tab="learn"]').classList.toggle("hidden", !S.tutorial);
+  if (!S.tutorial && S.tab === "learn") selectTab("assist");
   $("#pB").classList.toggle("active", !S.over && t === BLACK);
   $("#pW").classList.toggle("active", !S.over && t === WHITE);
   $("#capB").textContent = board().captures[BLACK];
@@ -591,13 +606,19 @@ function updateUI() {
   $("#btnPass").disabled = !myTurn;
   $("#btnResign").disabled = S.over;
   $("#btnHint").disabled = S.over;
-  $("#btnUndo").disabled = !!S.online || !S.moves.some(([c]) => isHuman(c));
+  $("#btnUndo").disabled = !!S.online || !!S.challenge || !S.moves.some(([c]) => isHuman(c));
   $("#btnResign").disabled = S.over || mode() === "ava" || (mode() === "hva" && S.thinking) || (mode() === "online" && !humans().length);
   $("#btnHint").disabled = S.over || mode() === "ava" || (isHuman(t) && !assistFor(t)) || (!!S.online && !humans().some(assistFor));
   $("#btnOwner").disabled = !helpAllowed();
   $("#assistSub").textContent = mode() === "ava" ? "โหมด AI vs AI" : !humans().length ? "ผู้ชมใช้ผู้ช่วยไม่ได้"
     : humans().map((c) => `${solo() ? "ผู้ช่วยของคุณ" : `P${pNum(c)}`}: ${assistName(assistFor(c))}`).join(" · ");
   $("#chatToRow").classList.toggle("hidden", !S.online);
+  if (S.tutorial) {
+    const l = LESSONS[S.tutorial.idx];
+    $("#nameB").textContent = "ดำ"; $("#nameW").textContent = "ขาว";
+    $("#turn").textContent = `🎓 ${l.title} · ตา${X.colorName(t)}`;
+    for (const id of ["#btnPass", "#btnUndo", "#btnResign", "#btnHint", "#btnOwner"]) $(id).disabled = true;
+  }
   updateEval();
   draw();
 }
@@ -718,6 +739,7 @@ function draw() {
     ctx.strokeStyle = last[0] === BLACK ? "#fff" : "#111"; ctx.lineWidth = c * 0.07;
     ctx.beginPath(); ctx.arc(P(p.x), P(p.y), c * 0.22, 0, 7); ctx.stroke();
   }
+  drawMarks();
   // hints
   const pre = S.preDone[n()];
   if (S.showHints && pre && !S.over && isHuman(toPlay()) && !S.preview) drawHints(pre);
@@ -852,9 +874,9 @@ const readCfg = (ch) => ({ level: cfgBox(ch).querySelector(".lvl").value || "sup
 function writeCfg(ch, c) { cfgBox(ch).querySelector(".lvl").value = c.level; cfgBox(ch).querySelector(".vis").value = String(c.visits); }
 // In "vs AI" mode the W card always holds the opponent's settings; in "AI vs AI" both cards are used.
 function syncDialog() {
-  const limited = S.full === false;       // remote visitor without the access key → online rooms only
-  document.querySelectorAll('.seg[data-name="mode"] button').forEach((b) => { b.disabled = limited && b.dataset.v !== "online"; });
-  if (limited && segVal("mode") !== "online") setSeg("mode", "online");
+  const limited = S.full === false;       // remote visitor without the access key → online rooms + lessons only
+  document.querySelectorAll('.seg[data-name="mode"] button').forEach((b) => { b.disabled = limited && !["online", "learn"].includes(b.dataset.v); });
+  if (limited && !["online", "learn"].includes(segVal("mode"))) setSeg("mode", "online");
   const m = segVal("mode"), you = segVal("you"), onl = segVal("onl");
   const joining = m === "online" && onl === "join";
   $("#onlineRow").classList.toggle("hidden", m !== "online");
@@ -893,8 +915,18 @@ function syncDialog() {
     const box = cfgBox(ch), sup = box.querySelector(".lvl").value === "super";
     box.querySelector(".pc-ai").classList.toggle("no-vis", !sup);
   }
+  // 🎓 lessons and 🏆 challenge have their own panels; hide the regular game settings
+  const special = m === "learn" || m === "challenge";
+  $("#learnRow").classList.toggle("hidden", m !== "learn");
+  $("#challengeRow").classList.toggle("hidden", m !== "challenge");
+  if (special) {
+    for (const id of ["#youRow", "#aiRow", "#p2pNote", "#assistRow", "#resignRow", "#onlineRow", "#ruleRow"]) $(id).classList.add("hidden");
+    $("#sizeRow").classList.toggle("hidden", m === "learn");
+  }
+  if (m === "learn") { renderLearnPicker(); $("#btnStart").textContent = "🎓 เริ่มเรียน"; }
+  if (m === "challenge") renderLadder();
 }
-document.querySelectorAll('.seg[data-name="mode"], .seg[data-name="you"], .seg[data-name="onl"]').forEach((el) => el.addEventListener("click", () => setTimeout(syncDialog)));
+document.querySelectorAll('.seg[data-name="mode"], .seg[data-name="you"], .seg[data-name="onl"], .seg[data-name="size"]').forEach((el) => el.addEventListener("click", () => setTimeout(syncDialog)));
 document.querySelectorAll(".pcfg select").forEach((el) => el.addEventListener("change", syncDialog));
 $("#swapP").onclick = () => { const b = readCfg("B"), w = readCfg("W"); writeCfg("B", w); writeCfg("W", b); syncDialog(); };
 $("#handicap").onchange = () => { $("#komi").value = +$("#handicap").value ? 0.5 : 7.5; };
@@ -928,6 +960,8 @@ $("#dlgNew").addEventListener("close", () => {
   const m = segVal("mode"), ai = (c) => ({ type: "ai", ...c });
   if (m === "online") return segVal("onl") === "join" ? joinRoom($("#olCode").value) : createRoom();
   leaveRoom();
+  if (m === "learn") return startLesson(+$("#learnPick").value);
+  if (m === "challenge") return startChallenge(+segVal("size"));
   const pAssist = (ch) => +document.querySelector(`.p-assist[data-color="${ch}"]`).value;
   const human = { type: "human", assist: +$("#assistVisits").value };
   let players;
@@ -941,16 +975,17 @@ $("#dlgNew").addEventListener("close", () => {
   newGame({ size: +segVal("size"), players, handicap: +$("#handicap").value,
     komi: +$("#komi").value || 0, aiResign: $("#aiResign").checked });
 });
-$("#dlgResult").addEventListener("close", () => { if ($("#dlgResult").returnValue === "new") $("#dlgNew").showModal(); });
+$("#dlgResult").addEventListener("close", () => { if ($("#dlgResult").returnValue === "new") { syncDialog(); $("#dlgNew").showModal(); } });
 
 
 // ------------------------------------------------------------------ tabs: compare AIs & machine usage
-document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => {
-  S.tab = b.dataset.tab;
-  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("sel", x === b));
-  for (const t of ["assist", "compare", "machine"]) $(`#tab-${t}`).classList.toggle("hidden", t !== S.tab);
+function selectTab(name) {
+  S.tab = name;
+  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("sel", x.dataset.tab === name));
+  for (const t of ["learn", "assist", "compare", "machine"]) $(`#tab-${t}`).classList.toggle("hidden", t !== name);
   refreshTab();
-}));
+}
+document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => selectTab(b.dataset.tab)));
 $("#miniStats").onclick = () => document.querySelector('.tabs [data-tab="machine"]').click();
 function refreshTab() {
   if (S.tab === "compare") renderCompare();
@@ -1125,6 +1160,222 @@ async function pollMetrics() {
     } catch { /* server restarting */ }
   }
   setTimeout(pollMetrics, 2000);
+}
+
+// ------------------------------------------------------------------ board marks (lessons & hints)
+function drawMarks() {
+  const M = S.marks, H = S.hintMarks;
+  if (!M && !H) return;
+  const b = board(), c = geo.cell;
+  const at = (g) => { const p = fromGTP(g, S.size); return p && p.x >= 0 && p.y >= 0 && p.x < S.size && p.y < S.size ? p : null; };
+  const ink = (p) => (b.get(p.x, p.y) === BLACK ? "#fff" : b.get(p.x, p.y) === WHITE ? "#111" : "#c0392b");
+  ctx.lineWidth = c * 0.07;
+  for (const g of M?.circle || []) { const p = at(g); if (!p) continue; ctx.strokeStyle = ink(p); ctx.beginPath(); ctx.arc(P(p.x), P(p.y), c * 0.22, 0, 7); ctx.stroke(); }
+  for (const g of M?.triangle || []) {
+    const p = at(g); if (!p) continue; const r = c * 0.26;
+    ctx.strokeStyle = ink(p); ctx.beginPath();
+    ctx.moveTo(P(p.x), P(p.y) - r); ctx.lineTo(P(p.x) + r * 0.87, P(p.y) + r * 0.5); ctx.lineTo(P(p.x) - r * 0.87, P(p.y) + r * 0.5); ctx.closePath(); ctx.stroke();
+  }
+  for (const g of M?.square || []) { const p = at(g); if (!p) continue; const r = c * 0.2; ctx.strokeStyle = ink(p); ctx.strokeRect(P(p.x) - r, P(p.y) - r, 2 * r, 2 * r); }
+  for (const [g, text] of Object.entries(M?.label || {})) {
+    const p = at(g); if (!p) continue;
+    ctx.font = `600 ${c * (text.length > 2 ? 0.34 : 0.46)}px -apple-system, "IBM Plex Sans Thai", sans-serif`;
+    const w = ctx.measureText(text).width + c * 0.2;
+    if (b.get(p.x, p.y) === EMPTY) { ctx.fillStyle = "#e3bd78"; ctx.fillRect(P(p.x) - w / 2, P(p.y) - c * 0.3, w, c * 0.6); }
+    ctx.fillStyle = ink(p) === "#c0392b" ? "#3b2a14" : ink(p); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(text, P(p.x), P(p.y) + c * 0.02);
+  }
+  for (const g of H || []) { const p = at(g); if (!p) continue; ctx.strokeStyle = "#2f8f5b"; ctx.lineWidth = c * 0.09; ctx.beginPath(); ctx.arc(P(p.x), P(p.y), c * 0.4, 0, 7); ctx.stroke(); }
+}
+
+// ------------------------------------------------------------------ 🎓 tutorial
+const LEARN_KEY = "go.tutorial.v1";
+function learnDone() { try { return JSON.parse(localStorage.getItem(LEARN_KEY) || "{}"); } catch { return {}; } }
+function markDone(id) {
+  const d = learnDone(); d[id] = Date.now();
+  try { localStorage.setItem(LEARN_KEY, JSON.stringify(d)); } catch { /* storage unavailable */ }
+}
+const firstUnfinished = () => { const d = learnDone(); const i = LESSONS.findIndex((l) => !d[l.id]); return i < 0 ? 0 : i; };
+
+function startLesson(idx) {
+  const i = Math.max(0, Math.min(idx | 0, LESSONS.length - 1)), l = LESSONS[i];
+  newGame({ size: l.size, komi: 7.5, handicap: 0, aiResign: false,
+    players: { [BLACK]: { type: "human", assist: 0 }, [WHITE]: { type: "human", assist: 0 } },
+    setup: [...l.black.map((g) => ["B", g]), ...l.white.map((g) => ["W", g])], setupFirst: l.toPlay === "W" ? WHITE : BLACK,
+    tutorial: { idx: i, step: 0, solved: !l.steps?.length, busy: false }, marks: l.marks || null });
+  if (!l.steps?.length) markDone(l.id);           // reading lessons count once opened
+  selectTab("learn");
+  lessonFeedback(null);
+  renderLesson();
+  updateUI();
+}
+function lessonFeedback(cls, html) {
+  const el = $("#lsFeedback");
+  el.className = `lesson-fb ${cls || ""}`;
+  el.classList.toggle("hidden", !cls);
+  if (cls) el.innerHTML = html;
+}
+function renderLesson() {
+  const t = S.tutorial;
+  if (!t) return;
+  const l = LESSONS[t.idx], done = learnDone(), steps = l.steps || [];
+  const count = LESSONS.filter((x) => done[x.id]).length;
+  $("#lsBar").style.width = `${(count / LESSONS.length) * 100}%`;
+  $("#lsChapter").textContent = `${l.chapter} · บทที่ ${t.idx + 1}/${LESSONS.length} · เรียนแล้ว ${count}/${LESSONS.length}`;
+  $("#lsTitle").textContent = `${done[l.id] ? "✅ " : ""}${l.title}`;
+  $("#lsText").innerHTML = l.text;
+  $("#lsSteps").textContent = steps.length > 1 ? `ขั้นที่ ${Math.min(t.step + 1, steps.length)}/${steps.length}` : "";
+  $("#lsPrev").disabled = t.idx === 0;
+  $("#lsHint").disabled = !l.hint || t.solved;
+  $("#lsNext").textContent = t.idx === LESSONS.length - 1 ? "🏆 ไปท้าชิง AI" : "ถัดไป ➡";
+  $("#lsNext").classList.toggle("primary", t.solved);
+  $("#lsIndex").innerHTML = CHAPTERS.map((ch) => `<h5>${ch.title}</h5>` + ch.lessons.map((x) => {
+    const i = LESSONS.findIndex((y) => y.id === x.id);
+    return `<button type="button" data-i="${i}" class="${i === t.idx ? "cur" : ""}">${done[x.id] ? "✅" : "⬜"} ${x.title}</button>`;
+  }).join("")).join("");
+}
+$("#lsIndex").addEventListener("click", (e) => { const b = e.target.closest("button[data-i]"); if (b) startLesson(+b.dataset.i); });
+$("#lsPrev").onclick = () => S.tutorial && startLesson(S.tutorial.idx - 1);
+$("#lsReset").onclick = () => S.tutorial && startLesson(S.tutorial.idx);
+$("#lsNext").onclick = () => {
+  if (!S.tutorial) return;
+  if (S.tutorial.idx >= LESSONS.length - 1) { setSeg("mode", "challenge"); syncDialog(); $("#dlgNew").showModal(); return; }
+  startLesson(S.tutorial.idx + 1);
+};
+$("#lsHint").onclick = () => {
+  const t = S.tutorial; if (!t) return;
+  const l = LESSONS[t.idx], step = (l.steps || [])[t.step];
+  lessonFeedback("info", `💡 ${l.hint}`);
+  if (step?.answers && step.answers.length <= 6) { S.hintMarks = step.answers; draw(); }
+};
+
+// judge a move with KataGo: points lost versus the best move in the position before it
+async function aiJudge(gtp, color) {
+  const base = { size: S.size, komi: S.komi, initialStones: S.initialStones.map(([c, m]) => [colorChar(c), m]), initialPlayer: colorChar(S.first) };
+  const mv = (list) => list.map(([c, m]) => [colorChar(c), m]);
+  try {
+    const pre = await api("/api/analyze", { ...base, moves: mv(S.moves.slice(0, -1)), maxVisits: 600 });
+    if (pre.error || !pre.moveInfos) return { error: pre.error || "no result" };
+    const best = pre.moveInfos[0], mi = pre.moveInfos.find((m) => m.move === gtp);
+    let after;
+    if (mi && mi.visits >= 20) after = X.scoreFor(mi, color);
+    else {
+      const post = await api("/api/analyze", { ...base, moves: mv(S.moves), maxVisits: 400 });
+      if (post.error || !post.rootInfo) return { error: post.error || "no result" };
+      after = X.scoreFor(post.rootInfo, color);
+    }
+    return { loss: Math.max(0, X.scoreFor(best, color) - after), best: best.move, pv: best.pv };
+  } catch (e) { return { error: String(e.message || e) }; }
+}
+
+async function tutorialPlay(gtp) {
+  const t = S.tutorial, l = LESSONS[t.idx], steps = l.steps || [];
+  if (t.busy) return;
+  if (t.solved) return lessonFeedback("info", steps.length ? "ผ่านบทนี้แล้ว 🎉 กด “ถัดไป” ได้เลย หรือ “เริ่มบทใหม่” เพื่อลองอีกครั้ง" : "บทนี้เป็นบทอ่าน — กด “ถัดไป” เพื่อไปต่อ");
+  const step = steps[t.step], color = toPlay(), before = board();
+  const p = gtp === "pass" ? null : fromGTP(gtp, S.size);
+  if (p && !before.isLegal(p.x, p.y, color)) {
+    const i = before.idx(p.x, p.y);
+    const why = before.grid[i] !== EMPTY ? "มีหมากอยู่แล้ว" : i === before.ko ? "ติดกติกาโกะ — ต้องไปเล่นที่อื่นก่อน 1 ตา" : "ฆ่าตัวตาย: จุดนี้ไม่มีลมหายใจ และไม่ได้กินหมากอีกฝ่าย";
+    return lessonFeedback("bad", `🚫 วางไม่ได้ — ${why}`);
+  }
+  play(color, gtp);
+  S.hintMarks = null;
+  const after = board(), i = p ? after.idx(p.x, p.y) : -1;
+  updateUI();
+  let ok = !step.answers || step.answers.includes(gtp), extra = "";
+  if (ok && step.check === "capture") ok = after.captures[color] - before.captures[color] >= (step.min || 1);
+  if (ok && step.check === "atari") ok = after.neighbors(i).some((n) => after.grid[n] === other(color) && after.group(n).libs.size === 1);
+  if (ok && step.check === "escape") ok = after.group(i).libs.size >= (step.min || 3);
+  if (ok && step.check === "ai") {
+    t.busy = true;
+    lessonFeedback("info", "🤖 KataGo กำลังตรวจคำตอบ…");
+    const v = await aiJudge(gtp, color);
+    t.busy = false;
+    if (S.tutorial !== t) return;
+    if (v.error) extra = `<br><small>(ตรวจด้วย AI ไม่ได้: ${escapeHtml(v.error)} — ผ่านให้ก่อน)</small>`;
+    else {
+      ok = v.loss <= (step.tol ?? 1);
+      extra = `<br><small>ท่าที่ดีที่สุดของ KataGo: <b>${v.best}</b> · ท่าของคุณเสีย ${v.loss.toFixed(1)} แต้ม</small>`;
+      if (!ok) S.hintMarks = [v.best];
+    }
+  }
+  if (!ok) {
+    const w = typeof step.wrong === "object" ? step.wrong[gtp] : step.wrong;
+    lessonFeedback("bad", `❌ ${w || "ยังไม่ใช่ ลองใหม่อีกครั้ง"}${extra}`);
+    t.busy = true;
+    setTimeout(() => {
+      if (S.tutorial !== t) return;
+      S.moves.pop(); S.boards.pop(); t.busy = false; updateUI();
+    }, 1100);
+    return;
+  }
+  const finish = () => { t.solved = true; markDone(l.id); lessonFeedback("ok", `🎉 ${step.ok || "ผ่านบทนี้แล้ว!"}${extra}<br><b>กด “ถัดไป” เพื่อไปบทต่อไป</b>`); renderLesson(); };
+  const last = t.step === steps.length - 1;
+  lessonFeedback("ok", `✅ ${step.ok || "ถูกต้อง!"}${extra}`);
+  if (step.reply) {
+    t.busy = true;
+    setTimeout(() => {
+      if (S.tutorial !== t) return;
+      play(other(color), step.reply); t.busy = false;
+      if (last) finish(); else { t.step++; renderLesson(); }
+      updateUI();
+    }, 700);
+  } else if (last) finish();
+  else { t.step++; renderLesson(); }
+}
+function renderLearnPicker() {
+  const done = learnDone(), count = LESSONS.filter((l) => done[l.id]).length, cur = firstUnfinished();
+  $("#learnStatus").innerHTML = `เรียนไปแล้ว <b>${count}/${LESSONS.length}</b> บท · ${CHAPTERS.length} หมวด`;
+  const sel = $("#learnPick"), keep = sel.dataset.touched ? sel.value : String(cur);
+  sel.innerHTML = CHAPTERS.map((ch) => `<optgroup label="${ch.title}">` + ch.lessons.map((l) => {
+    const i = LESSONS.findIndex((x) => x.id === l.id);
+    return `<option value="${i}">${done[l.id] ? "✅" : "⬜"} ${i + 1}. ${l.title}</option>`;
+  }).join("") + "</optgroup>").join("");
+  sel.value = keep;
+}
+$("#learnPick").addEventListener("change", (e) => { e.target.dataset.touched = "1"; });
+
+// ------------------------------------------------------------------ 🏆 challenge ladder
+const CH_KEY = "go.challenge.v1";
+function chAll() { try { return JSON.parse(localStorage.getItem(CH_KEY) || "{}"); } catch { return {}; } }
+function chFor(size) { return { stage: 0, best: 0, wins: 0, losses: 0, ...(chAll()[size] || {}) }; }
+function chSave(size, v) {
+  const all = chAll(); all[size] = v;
+  try { localStorage.setItem(CH_KEY, JSON.stringify(all)); } catch { /* storage unavailable */ }
+}
+function renderLadder() {
+  const size = +segVal("size"), pr = chFor(size), cur = Math.min(pr.stage, LADDER.length - 1);
+  const cleared = pr.stage >= LADDER.length;
+  $("#chStatus").innerHTML = cleared ? `👑 <b>ผ่านครบทุกด่านบนกระดาน ${size}×${size}!</b> เล่นบอสซ้ำได้ · ชนะ ${pr.wins} แพ้ ${pr.losses}`
+    : `ด่านปัจจุบัน (${size}×${size}): <b>${cur + 1}/${LADDER.length} ${LADDER[cur].icon} ${LADDER[cur].name}</b> · ชนะ ${pr.wins} แพ้ ${pr.losses}`;
+  $("#chLadder").innerHTML = LADDER.map((s, i) =>
+    `<li class="${i < pr.stage ? "done" : i === cur && !cleared ? "cur" : "locked"}">${i + 1}. ${s.icon} ${s.name}</li>`).join("");
+  $("#chLadder").querySelector(".cur")?.scrollIntoView({ block: "nearest" });
+  $("#btnStart").textContent = `⚔️ ท้าชิงด่าน ${cur + 1}`;
+}
+$("#chReset").onclick = () => {
+  const size = +segVal("size");
+  if (confirm(`เริ่มนับด่านบนกระดาน ${size}×${size} ใหม่ตั้งแต่ด่าน 1?`)) { chSave(size, { stage: 0, best: 0, wins: 0, losses: 0 }); renderLadder(); }
+};
+function startChallenge(size) {
+  const pr = chFor(size), stage = Math.min(pr.stage, LADDER.length - 1), st = LADDER[stage];
+  newGame({ size, komi: 7.5, handicap: 0, aiResign: true,
+    players: { [BLACK]: { type: "human", assist: 0 }, [WHITE]: { type: "ai", level: st.level, visits: st.visits || 1000 } },
+    challenge: { size, stage, recorded: false } });
+  selectTab("assist");
+}
+// called once when a challenge game ends: update the ladder and return the text for the result dialog
+function challengeNote(winner) {
+  const c = S.challenge;
+  if (!c || c.recorded) return "";
+  c.recorded = true;
+  const pr = chFor(c.size), st = LADDER[c.stage], won = isHuman(winner);
+  if (won) { pr.wins++; if (c.stage === pr.stage) pr.stage++; pr.best = Math.max(pr.best, c.stage + 1); } else pr.losses++;
+  chSave(c.size, pr);
+  if (won && c.stage >= LADDER.length - 1) return "\n\n👑 คุณเอาชนะบอสใหญ่ KataGo สุดกำลังได้! สุดยอดมาก!";
+  if (won) { const nx = LADDER[Math.min(pr.stage, LADDER.length - 1)]; return `\n\n🏆 ผ่านด่าน ${c.stage + 1}: ${st.icon} ${st.name}!\nด่านต่อไป: ${nx.icon} ${nx.name} — กด “เล่นอีกครั้ง”`; }
+  return `\n\n💪 ยังไม่ผ่านด่าน ${c.stage + 1} (${st.icon} ${st.name}) — กด “เล่นอีกครั้ง” เพื่อลองใหม่`;
 }
 
 // ------------------------------------------------------------------ online rooms

@@ -45,10 +45,27 @@
 
     <div class="card assistant">
       <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="learn" class="hidden">🎓 บทเรียน</button>
         <button role="tab" data-tab="assist" class="sel">🧠 ผู้ช่วย</button>
         <button role="tab" data-tab="compare">📈 เทียบ AI</button>
         <button role="tab" data-tab="machine">🖥️ เครื่อง</button>
       </nav>
+
+      <section id="tab-learn" class="tabpanel hidden">
+        <div class="lesson-progress"><div id="lsBar"></div></div>
+        <small id="lsChapter" class="muted"></small>
+        <h3 id="lsTitle" class="lesson-title"></h3>
+        <div id="lsText" class="lesson-text"></div>
+        <div id="lsSteps" class="muted"></div>
+        <div id="lsFeedback" class="lesson-fb hidden" role="status"></div>
+        <div class="lesson-btns">
+          <button type="button" id="lsPrev">⬅ ก่อนหน้า</button>
+          <button type="button" id="lsHint">💡 คำใบ้</button>
+          <button type="button" id="lsReset">🔄 เริ่มบทใหม่</button>
+          <button type="button" id="lsNext">ถัดไป ➡</button>
+        </div>
+        <details class="lesson-index"><summary>📚 สารบัญบทเรียน</summary><div id="lsIndex"></div></details>
+      </section>
 
       <section id="tab-assist" class="tabpanel">
         <div class="assist-head">
@@ -113,6 +130,20 @@
       <button type="button" data-v="hvh"><span>👥</span><b>P2P · 2 คน</b><small>ผลัดกันเดินเครื่องเดียว</small></button>
       <button type="button" data-v="ava"><span>👀</span><b>AI vs AI</b><small>ดู AI แข่งกัน</small></button>
       <button type="button" data-v="online"><span>🌐</span><b>ออนไลน์</b><small>สร้าง/เข้าห้อง</small></button>
+      <button type="button" data-v="learn"><span>🎓</span><b>ฝึกสอน</b><small>บทเรียนตั้งแต่ศูนย์</small></button>
+      <button type="button" data-v="challenge"><span>🏆</span><b>ท้าชิง AI</b><small>ชนะแล้ว AI เก่งขึ้น</small></button>
+    </div>
+    <div id="learnRow" class="online-box hidden">
+      <div id="learnStatus" class="learn-status"></div>
+      <label>เริ่มที่บท<select id="learnPick"></select></label>
+      <p class="note">บทเรียนแบบโต้ตอบ — อ่านคำอธิบายแล้วคลิกบนกระดานเพื่อตอบ มีคำใบ้ทุกบท · บท “ฝึกกับ AI” ให้ KataGo ตรวจคำตอบ</p>
+    </div>
+    <div id="challengeRow" class="online-box hidden">
+      <div id="chStatus" class="learn-status"></div>
+      <ol id="chLadder" class="ladder"></ol>
+      <p class="note">คุณเล่นดำ · ชนะ = ขึ้นด่านถัดไป · แพ้ = ลองด่านเดิม · ปิดผู้ช่วยและย้อนท่าไม่ได้ (ฝีมือล้วน)
+        · แยกความคืบหน้าตามขนาดกระดาน · เก็บไว้ในเบราว์เซอร์นี้</p>
+      <button type="button" id="chReset" class="mini-btn">↺ เริ่มนับด่านใหม่</button>
     </div>
     <div id="onlineRow" class="online-box hidden">
       <div class="seg" data-name="onl"><button type="button" data-v="create" class="on">➕ สร้างห้องใหม่</button><button type="button" data-v="join">🔑 เข้าห้องด้วยรหัส</button></div>
