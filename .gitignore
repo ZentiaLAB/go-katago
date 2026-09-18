@@ -1,0 +1,7 @@
+# KataGo networks are large (GitHub rejects files > 100 MB) — fetch them with scripts/download_models.sh
+models/*.bin.gz
+logs/
+__pycache__/
+*.pyc
+.DS_Store
+.claude/

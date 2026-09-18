@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>หมากล้อม KataGo</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='38' cy='50' r='30' fill='%23111'/><circle cx='64' cy='50' r='30' fill='%23f4f1e8' stroke='%23999'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">⚫⚪</span> หมากล้อม <small>KataGo · Local AI</small></div>
+  <div class="top-right"><button id="btnServer" class="mini-btn hidden" type="button">⚙️ เซิร์ฟเวอร์</button><div id="miniStats" class="mini" title="เปิดแท็บ 🖥️ เครื่อง เพื่อดูรายละเอียด"></div><div id="engine" class="engine"><span class="dot"></span><span id="engineText">กำลังเปิด AI…</span></div></div>
+</header>
+
+<main class="layout">
+  <section class="board-wrap">
+    <div id="roomBar" class="roombar hidden"></div>
+    <div class="players">
+      <div class="player" id="pB"><span class="stone b"></span><div><b id="nameB">คุณ</b><small>จับกิน <span id="capB">0</span></small></div></div>
+      <div id="turn" class="turn">—</div>
+      <div class="player right" id="pW"><div><b id="nameW">AI</b><small>จับกิน <span id="capW">0</span></small></div><span class="stone w"></span></div>
+    </div>
+    <div class="board-box"><canvas id="board"></canvas><div id="thinking" class="thinking hidden"><span class="spinner"></span> <span id="thinkingText">AI กำลังคิด…</span></div></div>
+    <div class="controls">
+      <button id="btnPass">ผ่าน</button>
+      <button id="btnUndo">ย้อน</button>
+      <button id="btnHint" class="accent">💡 ขอคำแนะนำ <kbd>H</kbd></button>
+      <button id="btnOwner">🗺️ พื้นที่</button>
+      <button id="btnResign" class="danger">ยอมแพ้</button>
+      <button id="btnNew" class="primary">เกมใหม่</button>
+      <button id="btnPause" class="hidden">⏸ หยุด</button>
+      <button id="btnSgf" title="บันทึกเกมเป็นไฟล์ SGF">💾 SGF</button>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="card eval">
+      <div class="eval-head"><span>สถานการณ์</span><span id="scoreText">—</span></div>
+      <div class="wrbar"><div id="wrB" class="wrB" style="width:50%"></div><span id="wrLabelB" class="lbl l">ดำ 50%</span><span id="wrLabelW" class="lbl r">ขาว 50%</span></div>
+      <canvas id="graph" height="70"></canvas>
+    </div>
+
+    <div class="card assistant">
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="assist" class="sel">🧠 ผู้ช่วย</button>
+        <button role="tab" data-tab="compare">📈 เทียบ AI</button>
+        <button role="tab" data-tab="machine">🖥️ เครื่อง</button>
+      </nav>
+
+      <section id="tab-assist" class="tabpanel">
+        <div class="assist-head">
+          <div><b>🧠 ผู้ช่วย AI</b><small id="assistSub">ใช้ KataGo ตัวเดียวกับคู่แข่ง</small></div>
+          <label class="switch"><input type="checkbox" id="coachOn" checked><span></span> โค้ชอัตโนมัติ</label>
+        </div>
+        <div id="feed" class="feed"></div>
+        <div class="quick">
+          <button data-q="ตอนนี้ควรเล่นตรงไหน เพราะอะไร">ควรเล่นตรงไหน?</button>
+          <button data-q="สถานการณ์ตอนนี้เป็นยังไง ใครได้เปรียบ">สถานการณ์?</button>
+          <button data-q="กลุ่มหมากไหนอ่อนแอหรือกำลังจะตาย">กลุ่มไหนอันตราย?</button>
+          <button data-q="ท่าล่าสุดของฉันเป็นยังไง ผิดพลาดตรงไหน">ท่าล่าสุดของฉัน?</button>
+        </div>
+        <div id="chatToRow" class="chat-to hidden"><span>ส่งถึง</span>
+          <div class="seg sm" data-name="chatTo"><button type="button" data-v="room" class="on">💬 คู่แข่ง</button><button type="button" data-v="ai">🧠 ผู้ช่วย AI</button></div>
+        </div>
+        <form id="chat" class="chat"><input id="chatIn" autocomplete="off" placeholder="ถามผู้ช่วยได้เลย…"><button>ส่ง</button></form>
+      </section>
+
+      <section id="tab-compare" class="tabpanel hidden">
+        <p class="note" id="cmpNote">ทั้งสองฝั่งใช้ KataGo โมเดลเดียวกัน — <b class="k-ai">AI คู่แข่ง</b> คิดตอนตาของมัน, <b class="k-as">ผู้ช่วย</b> คิดตอนตาคุณ ตัวเลขทั้งหมดเป็นมุมมองของ<b>คุณ</b></p>
+        <div id="cmpTiles" class="tiles"></div>
+        <h4>โอกาสชนะของคุณ ในสายตาแต่ละ AI</h4>
+        <div id="chWr"></div>
+        <h4>แต้มนำของคุณ</h4>
+        <div id="chScore"></div>
+        <h4>เวลาคิดต่อท่า (วินาที)</h4>
+        <div id="chTime"></div>
+        <h4>ความเร็วการคิด (visits/วินาที)</h4>
+        <div id="chVps"></div>
+        <h4>ตอนนี้แต่ละฝั่งคิดอะไร</h4>
+        <div id="cmpThink" class="think"></div>
+      </section>
+
+      <section id="tab-machine" class="tabpanel hidden">
+        <p class="note">วัดจากเครื่องนี้ทุก ~2 วินาที · แถบสี = ช่วงที่ <b class="k-ai">AI คู่แข่ง</b> / <b class="k-as">ผู้ช่วย</b> / <b class="k-llm">LLM</b> กำลังคิด</p>
+        <div id="macTiles" class="tiles"></div>
+        <h4>CPU (% ของทั้งเครื่อง <span id="cpuInfo"></span>)</h4>
+        <div id="chCpu"></div>
+        <h4>RAM (GB)</h4>
+        <div id="chRam"></div>
+        <h4>GPU (%)</h4>
+        <div id="chGpu"></div>
+        <details class="note"><summary>หมายเหตุการวัด</summary>
+          <ul>
+            <li>AI คู่แข่งและผู้ช่วยใช้ <b>process KataGo ตัวเดียวกัน</b> จึงแยก RAM ของแต่ละฝั่งไม่ได้ — ดูจากแถบสีว่าใครกำลังใช้เครื่องอยู่</li>
+            <li>KataGo ใช้ GPU + Neural Engine เป็นหลัก CPU จึงต่ำ; การใช้ Neural Engine วัดไม่ได้ถ้าไม่มีสิทธิ์ sudo (powermetrics)</li>
+            <li>RAM ทั้งเครื่องนับแบบ Activity Monitor (App + Wired + Compressed) · Mac ใช้หน่วยความจำร่วม (Unified Memory) GPU จึงใช้ RAM ก้อนเดียวกัน</li>
+            <li>RAM ของ LLM จะขึ้นเมื่อโหลดโมเดลครั้งแรก และจะถูกปล่อยหลังไม่ได้ใช้ 30 นาที</li>
+          </ul>
+        </details>
+      </section>
+    </div>
+  </aside>
+</main>
+
+<dialog id="dlgNew">
+  <form method="dialog" class="newgame">
+    <h2>เกมใหม่</h2>
+    <div class="modes seg" data-name="mode" role="radiogroup" aria-label="โหมดการเล่น">
+      <button type="button" data-v="hva" class="on"><span>🤖</span><b>เล่นกับ AI</b><small>คุณ vs KataGo</small></button>
+      <button type="button" data-v="hvh"><span>👥</span><b>P2P · 2 คน</b><small>ผลัดกันเดินเครื่องเดียว</small></button>
+      <button type="button" data-v="ava"><span>👀</span><b>AI vs AI</b><small>ดู AI แข่งกัน</small></button>
+      <button type="button" data-v="online"><span>🌐</span><b>ออนไลน์</b><small>สร้าง/เข้าห้อง</small></button>
+    </div>
+    <div id="onlineRow" class="online-box hidden">
+      <div class="seg" data-name="onl"><button type="button" data-v="create" class="on">➕ สร้างห้องใหม่</button><button type="button" data-v="join">🔑 เข้าห้องด้วยรหัส</button></div>
+      <div class="row2">
+        <label>ชื่อของคุณ<input id="olName" maxlength="24" autocomplete="nickname" placeholder="เช่น Knight"></label>
+        <label id="olCodeRow" class="hidden">รหัสห้อง<input id="olCode" maxlength="6" autocomplete="off" placeholder="ABC123" style="text-transform:uppercase"></label>
+      </div>
+      <p id="olWarn" class="note"></p>
+    </div>
+    <div class="field" id="sizeRow">ขนาดกระดาน
+      <div class="seg" data-name="size"><button type="button" data-v="9">9×9</button><button type="button" data-v="13">13×13</button><button type="button" data-v="19" class="on">19×19</button></div>
+    </div>
+    <div id="youRow" class="field">คุณเล่นหมาก
+      <div class="seg" data-name="you"><button type="button" data-v="B" class="on">⚫ ดำ (เดินก่อน)</button><button type="button" data-v="W">⚪ ขาว</button><button type="button" data-v="R">🎲 สุ่ม</button></div>
+    </div>
+    <div id="aiRow" class="field"><span id="aiRowTitle">AI คู่แข่ง</span>
+      <div class="players-cfg">
+      <div class="pcfg" data-color="B">
+        <div class="pc-head"><span class="stone b"></span><div><b class="pc-title">P1 · ดำ</b><small class="pc-sub">เดินก่อน</small></div></div>
+        <div class="pc-ai">
+          <label class="mini-field">ระดับฝีมือ<select class="lvl"></select></label>
+          <label class="mini-field vis-field">เวลาคิดต่อท่า<select class="vis">
+            <option value="300">เร็ว (~1 วิ)</option>
+            <option value="1000" selected>มาตรฐาน (~4 วิ)</option>
+            <option value="3000">ลึก (~12 วิ)</option>
+            <option value="8000">สุดกำลัง (~30 วิ)</option>
+          </select></label>
+          <p class="note human-note">เลียนแบบการเล่นของคนระดับนี้ · คิด ~1 วิ/ท่า</p>
+        </div>
+      </div>
+      <div id="swapRow" class="pc-swap"><button type="button" id="swapP">⇅ สลับสองฝั่ง</button></div>
+      <div class="pcfg" data-color="W">
+        <div class="pc-head"><span class="stone w"></span><div><b class="pc-title">AI คู่แข่ง</b><small class="pc-sub"></small></div></div>
+        <div class="pc-ai">
+          <label class="mini-field">ระดับฝีมือ<select class="lvl"></select></label>
+          <label class="mini-field vis-field">เวลาคิดต่อท่า<select class="vis">
+            <option value="300">เร็ว (~1 วิ)</option>
+            <option value="1000" selected>มาตรฐาน (~4 วิ)</option>
+            <option value="3000">ลึก (~12 วิ)</option>
+            <option value="8000">สุดกำลัง (~30 วิ)</option>
+          </select></label>
+          <p class="note human-note">เลียนแบบการเล่นของคนระดับนี้ · คิด ~1 วิ/ท่า</p>
+        </div>
+      </div>
+      </div>
+    </div>
+    <div id="p2pNote" class="p2p-note hidden">
+      <div class="p2p-row"><span class="stone b"></span><div><b>ผู้เล่น 1</b><small>เล่นดำ · เดินก่อน</small></div>
+        <label class="mini-field">ผู้ช่วย AI<select class="p-assist" data-color="B">
+          <option value="0">🚫 ไม่ใช้ผู้ช่วย</option>
+          <option value="500">เร็ว (~2 วิ)</option>
+          <option value="1000" selected>มาตรฐาน (~4 วิ)</option>
+          <option value="3000">ลึก (~12 วิ)</option>
+          <option value="8000">สุดกำลัง (~30 วิ)</option>
+        </select></label></div>
+      <div class="p2p-row"><span class="stone w"></span><div><b>ผู้เล่น 2</b><small>เล่นขาว · ได้โคมิ</small></div>
+        <label class="mini-field">ผู้ช่วย AI<select class="p-assist" data-color="W">
+          <option value="0">🚫 ไม่ใช้ผู้ช่วย</option>
+          <option value="500">เร็ว (~2 วิ)</option>
+          <option value="1000" selected>มาตรฐาน (~4 วิ)</option>
+          <option value="3000">ลึก (~12 วิ)</option>
+          <option value="8000">สุดกำลัง (~30 วิ)</option>
+        </select></label></div>
+      <p class="note">ผลัดกันคลิกวางหมากบนเครื่องนี้ · คนที่ปิดผู้ช่วยจะไม่เห็นคำแนะนำ, % ชนะ และแผนที่พื้นที่ในตาของตัวเอง
+        — ตั้งผู้ช่วยต่างกันได้เพื่อเป็นแต้มต่อให้มือใหม่</p>
+    </div>
+    <label id="assistRow">ผู้ช่วย AI ของคุณ
+      <select id="assistVisits">
+          <option value="0">🚫 ไม่ใช้ผู้ช่วย</option>
+          <option value="500">เร็ว (~2 วิ)</option>
+          <option value="1000" selected>มาตรฐาน (~4 วิ)</option>
+          <option value="3000">ลึก (~12 วิ)</option>
+          <option value="8000">สุดกำลัง (~30 วิ)</option>
+      </select>
+    </label>
+    <div class="row2" id="ruleRow">
+      <label>หมากต่อ (แฮนดิแคป)
+        <select id="handicap"><option value="0">ไม่มี</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option></select>
+      </label>
+      <label>โคมิ
+        <input id="komi" type="number" step="0.5" value="7.5">
+      </label>
+    </div>
+    <label class="check" id="resignRow"><input type="checkbox" id="aiResign" checked> ให้ AI ยอมแพ้เมื่อแพ้แน่นอนแล้ว</label>
+    <p class="note">กติกาจีน (นับพื้นที่) · หมากต่อจะวางให้ฝั่งดำ และตั้งโคมิ 0.5 อัตโนมัติ</p>
+    <div class="actions"><button value="cancel" formnovalidate>ยกเลิก</button><button value="ok" class="primary" id="btnStart">เริ่มเล่น</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgServer">
+  <form method="dialog" class="newgame">
+    <h2>เชื่อมต่อเซิร์ฟเวอร์เกม</h2>
+    <p class="note">หน้าเว็บนี้ไม่มี AI ในตัว — KataGo รันบนเครื่อง Mac ของเจ้าของเกม
+      ใส่ลิงก์เซิร์ฟเวอร์ที่ได้จาก <b>./scripts/play-online.sh</b> (ปกติถ้าเปิดจากลิงก์เชิญจะตั้งให้อัตโนมัติ)</p>
+    <label>ที่อยู่เซิร์ฟเวอร์<input id="srvUrl" type="url" autocomplete="off" placeholder="https://xxxx.trycloudflare.com"></label>
+    <label>รหัสเข้าถึง (ไม่บังคับ)<input id="srvKey" type="password" autocomplete="off" placeholder="ไม่ใส่ = เล่นได้เฉพาะห้องออนไลน์"></label>
+    <p id="srvMsg" class="note"></p>
+    <div class="actions"><button value="cancel" formnovalidate>ยกเลิก</button><button value="clear" formnovalidate>ล้างค่า</button><button value="ok" class="primary">เชื่อมต่อ</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgResult"><form method="dialog" class="result"><h2 id="resTitle"></h2><p id="resBody"></p><div class="actions"><button value="close">ดูกระดาน</button><button value="new" class="primary">เล่นอีกครั้ง</button></div></form></dialog>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
