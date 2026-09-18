@@ -4,7 +4,7 @@
 # Anyone with the link can create/join rooms; the access key unlocks vs-AI / analysis / LLM for trusted people.
 set -e
 cd "$(dirname "$0")/.."
-FRONTEND="${GO_FRONTEND_URL:-https://go-katago.vercel.app}"
+FRONTEND="${GO_FRONTEND_URL:-https://go.zentia.tech}"
 PORT="${GO_PORT:-8765}"
 
 if ! command -v cloudflared >/dev/null; then
