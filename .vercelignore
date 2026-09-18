@@ -1,0 +1,4 @@
+# Only the static front-end goes to Vercel; the engine/server stays on the Mac.
+/*
+!/web
+!/vercel.json
